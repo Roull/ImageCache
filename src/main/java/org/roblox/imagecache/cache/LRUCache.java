@@ -8,8 +8,8 @@ import org.roblox.imagecache.types.ResourceData;
 import org.roblox.imagecache.types.ResultData;
 import org.roblox.imagecache.types.State;
 import org.roblox.imagecache.utils.FileIOUtils;
-//import org.slf4j.Logger;
-//import org.slf4j.LoggerFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.net.HttpURLConnection;
@@ -30,7 +30,7 @@ import java.util.*;
  * </p>
  */
 public class LRUCache {
-    //private static final Logger LOGGER = LoggerFactory.getLogger(LRUCache.class);
+    private final Logger log = LoggerFactory.getLogger(LRUCache.class);
 
     private static final String ENC = "UTF8";
     private static final String DEFAULT_FILENAME = "image";
@@ -94,10 +94,10 @@ public class LRUCache {
      * @throws IOException
      */
     public ResultData load(@NonNull String key) throws IOException {
-        //Log.info("Trying to load object: " + key);
+        log.info("Trying to load object: " + key);
         if (linkedHashMap.containsKey(key)) {
             ResourceData cahedResource = linkedHashMap.get(key);
-            return new ResultData(key, State.CACHED, cahedResource.getOriginalResourceBytes().length);
+            return new ResultData(key, State.CACHE, cahedResource.getOriginalResourceBytes().length);
         } else {
             //download the image by making external service call
             File downloadedResource = downLoadImage(new URL(key));
@@ -162,7 +162,6 @@ public class LRUCache {
             File origImg = generateFileLocation(url);
             // create parent folder that is unique for the original image
             origImg.getParentFile().mkdir();
-            //linkedHashMap.rem
             destination = new FileOutputStream(origImg);
             long curFileSize = ByteStreams.copy(source, destination);
             updateCurrentCapacity(curFileSize);
@@ -210,7 +209,7 @@ public class LRUCache {
                 throw new RuntimeException("Unable to evict objects from cache");
             }
         }
-        //Log.info("Total size of objects freed from eviction by deletion on disk: "+ objectsFreedSized);
+        log.info("Total size of objects freed from cache by deletion on disk: "+ objectsFreedSized);
         return resourceDataListToDelete;
     }
 
@@ -243,7 +242,7 @@ public class LRUCache {
      */
     private void updateCurrentCapacity(long curFileSize) {
         currentSizeInBytes += curFileSize;
-        //Log.info("After updateCurrentCapacity currentSizeInBytes: " + currentSizeInBytes);
+        log.info("After updating size of cache, currentSizeInBytes: " + currentSizeInBytes);
     }
 
     /**

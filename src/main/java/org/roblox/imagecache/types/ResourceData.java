@@ -12,7 +12,7 @@ import lombok.Getter;
 @Getter
 public class ResourceData {
     /**
-     * Identifier of the resource that will be cached.
+     * Identifier of the resource that will be cached/downloaded.
      */
     private String resourceIdentifier;
     /**

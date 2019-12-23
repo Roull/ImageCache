@@ -2,22 +2,24 @@ package org.roblox.imagecache.utils;
 
 import lombok.NonNull;
 import org.roblox.imagecache.types.ResultData;
-//import org.slf4j.Logger;
-//import org.slf4j.LoggerFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
-import java.util.Collections;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.List;
 
 /**
- * Utils class that provides helper methods to download objects from web to cache.
+ * Utils class that provides helper methods to download objects, read files, write files etc.
  */
 public final class FileIOUtils {
 
-    //private static final Logger log = LoggerFactory.getLogger(FileIOUtils.class);
+    private static final Logger log = LoggerFactory.getLogger(FileIOUtils.class);
 
     /**
      * Reads the inputfile line by line and adds it to the list.
@@ -29,7 +31,7 @@ public final class FileIOUtils {
      * @throws  {@link RuntimeException} if unable to read from input file.
      */
     public static List<String> readFileToList(@NonNull String fileName) {
-        List<String> lines = Collections.emptyList();
+        List<String> lines;
         try {
             lines = Files.readAllLines(Paths.get(fileName), StandardCharsets.UTF_8);
         } catch (IOException e) {
@@ -80,9 +82,9 @@ public final class FileIOUtils {
      */
     public static void removeFile(@NonNull File file) throws IOException {
         if (Files.deleteIfExists(file.toPath())) {
-            ////Log.info("file removed from location " + file.getPath());
+            log.info("file removed from location " + file.getPath());
         } else {
-            ////Log.info("file does not exist at location" + file.getPath());
+            log.info("file does not exist at location" + file.getPath());
         }
     }
 }
