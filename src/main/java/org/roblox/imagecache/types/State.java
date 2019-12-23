@@ -11,5 +11,10 @@ public enum State {
     /**
      * Indicates that the resource was fetched from local cache and not had to be fetched by making external service call.
      */
-    CACHED
+    CACHED,
+
+    /**
+     * Indicates that there was error in fetching the resource.
+     */
+    ERROR
 }

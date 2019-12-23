@@ -1,7 +1,9 @@
 package org.roblox.imagecache.types;
 
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
+import lombok.Setter;
 
 /**
  * Result object which stores the status of the data that was resulting from cache load operation.
@@ -9,6 +11,7 @@ import lombok.Getter;
  */
 @Getter
 @AllArgsConstructor
+@Builder
 public class ResultData {
 
     /**
@@ -19,6 +22,7 @@ public class ResultData {
     /**
      * Indicates the status of cache load operation.
      */
+    @Setter
     private State state;
 
     /**
