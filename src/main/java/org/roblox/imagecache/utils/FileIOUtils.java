@@ -1,18 +1,23 @@
 package org.roblox.imagecache.utils;
 
 import lombok.NonNull;
+import org.apache.commons.lang3.StringUtils;
 import org.roblox.imagecache.types.ResultData;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Utils class that provides helper methods to download objects, read files, write files etc.
@@ -20,6 +25,10 @@ import java.util.List;
 public final class FileIOUtils {
 
     private static final Logger log = LoggerFactory.getLogger(FileIOUtils.class);
+
+    private static final String ENC = "UTF8";
+    private static final String DEFAULT_FILENAME = "image";
+    private static final int MAX_RETRY_COUNT = 3;
 
     /**
      * Reads the inputfile line by line and adds it to the list.
@@ -30,11 +39,14 @@ public final class FileIOUtils {
      *
      * @throws  {@link RuntimeException} if unable to read from input file.
      */
-    public static List<String> readFileToList(@NonNull String fileName) {
-        List<String> lines;
+    public static List<String> readFileToList(@NonNull final String fileName) {
+        if (StringUtils.isBlank(fileName)) {
+            throw new IllegalArgumentException("Expected non-empty fileName to parse");
+        }
+        final List<String> lines;
         try {
             lines = Files.readAllLines(Paths.get(fileName), StandardCharsets.UTF_8);
-        } catch (IOException e) {
+        } catch (final IOException e) {
             throw new RuntimeException(String.format("Unable to read input file from file %s due to %s", fileName, e.getCause()));
         }
         return lines;
@@ -49,13 +61,13 @@ public final class FileIOUtils {
      *
      * @throws  {@link RuntimeException} if unable to write output file.
      */
-    public static void writeListToFile(@NonNull String fileName, @NonNull List<ResultData> resultDataList) {
-        Path path = Paths.get(fileName);
-        for(ResultData resultData : resultDataList) {
+    public static void writeListToFile(@NonNull final String fileName, @NonNull final List<ResultData> resultDataList) {
+        final Path path = Paths.get(fileName);
+        for(final ResultData resultData : resultDataList) {
             try {
                 Files.write(path, resultData.toString().getBytes(),
                         Files.exists(path) ? StandardOpenOption.APPEND : StandardOpenOption.CREATE);
-            } catch (IOException e) {
+            } catch (final IOException e) {
                 throw new RuntimeException(String.format("Unable to write output to file %s due to %s", fileName, e.getCause()));
             }
         }
@@ -68,8 +80,8 @@ public final class FileIOUtils {
      *
      * @throws {@link IOException} if file/directory could not be deleted.
      */
-    public static void deleteIfExists(@NonNull String fileName) throws IOException {
-        Path path = Paths.get(fileName);
+    public static void deleteIfExists(@NonNull final String fileName) throws IOException {
+        final Path path = Paths.get(fileName);
         Files.deleteIfExists(path);
     }
 
@@ -80,12 +92,60 @@ public final class FileIOUtils {
      *
      * @throws {@link IOException} if file/directory could not be deleted.
      */
-    public static void removeFile(@NonNull File file) throws IOException {
+    private static void removeFile(@NonNull final File file) throws IOException {
         if (Files.deleteIfExists(file.toPath())) {
             log.info("file removed from location " + file.getPath());
         } else {
             log.info("file does not exist at location" + file.getPath());
         }
     }
+
+    public static File generateFileLocation(final File repository, final URL url) throws IOException {
+        final File parentDirectory = createParentDirectoryInRepository(repository, url);
+        return new File(parentDirectory, buildFileName(url));
+    }
+
+    private static File createParentDirectoryInRepository(final File repository, final URL url) throws IOException {
+        final File parentDirectory;
+        try {
+            parentDirectory = new File(repository, URLEncoder.encode(url.toString(), ENC));
+        } catch (final UnsupportedEncodingException e) {
+            throw new IOException("Encoding not supported", e);
+        }
+        return parentDirectory;
+    }
+
+    private static String buildFileName(final URL url) {
+        String fileName;
+        try {
+            fileName = new File(url.getPath()).getName();
+        } catch (final Exception e) {
+            fileName = DEFAULT_FILENAME + UUID.randomUUID();
+        }
+        return fileName;
+    }
+
+    /**
+     * retries deletion of resource from disk after retrying MAX_RETRY_ATTEMPTS
+     *
+     * @param resourceToDelete resource to delete from the disk.
+     *
+     * @return size that is freed up on disk after deletion of items.
+     */
+    public static long deleteResourceOnDisk(@NonNull final File resourceToDelete) throws IOException {
+        final long resourceFreeSize = resourceToDelete.length();
+        int count = 0;
+        while(true) {
+            try {
+                FileIOUtils.removeFile(resourceToDelete);
+                FileIOUtils.removeFile(resourceToDelete.getParentFile());
+                return resourceFreeSize;
+            } catch (final IOException ex) {
+                if (++count == MAX_RETRY_COUNT) throw ex;
+            }
+        }
+    }
+
+
 }
 

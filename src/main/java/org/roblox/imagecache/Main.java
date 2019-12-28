@@ -25,6 +25,7 @@ public class Main {
         String defaultRepository = System.getProperty("user.dir");
         //String inputFilePath = defaultRepository + File.separator + DEFAULT_INPUT_FILE;
         String inputFilePath = "/Users/ramanoh/workspace/ImageCache" + File.separator + DEFAULT_INPUT_FILE;
+
         //1. Parse input file
         List<String> inputImageUrls = FileIOUtils.readFileToList(inputFilePath);
 
