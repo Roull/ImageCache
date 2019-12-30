@@ -29,5 +29,3 @@ disk if you no longer require those resources.
  and can populate the map with the cache entries. So that cache hits increase on restart.
  * Add Metrics
 * Add other implementations of cache and provide a factory to make it configurable
-## Need Help?
-E-Mail : rahul.bellapukonda@gmail.com
