@@ -1,5 +1,6 @@
 package org.roblox.imagecache.utils;
 
+import lombok.NoArgsConstructor;
 import lombok.NonNull;
 import org.apache.commons.lang3.StringUtils;
 import org.roblox.imagecache.types.ResultData;
@@ -22,7 +23,8 @@ import java.util.UUID;
 /**
  * Utils class that provides helper methods to download objects, read files, write files etc.
  */
-public final class FileIOUtils {
+@NoArgsConstructor
+public class FileIOUtils {
 
     private static final Logger log = LoggerFactory.getLogger(FileIOUtils.class);
 
@@ -39,7 +41,7 @@ public final class FileIOUtils {
      *
      * @throws  {@link RuntimeException} if unable to read from input file.
      */
-    public static List<String> readFileToList(@NonNull final String fileName) {
+    public List<String> readFileToList(@NonNull final String fileName) {
         if (StringUtils.isBlank(fileName)) {
             throw new IllegalArgumentException("Expected non-empty fileName to parse");
         }
@@ -59,9 +61,9 @@ public final class FileIOUtils {
      *
      * @param resultDataList list of {@link ResultData} objects that need to be written to output.
      *
-     * @throws  {@link RuntimeException} if unable to write output file.
+     * @throws RuntimeException {@link RuntimeException} if unable to write output file.
      */
-    public static void writeListToFile(@NonNull final String fileName, @NonNull final List<ResultData> resultDataList) {
+    public void writeListToFile(@NonNull final String fileName, @NonNull final List<ResultData> resultDataList) {
         final Path path = Paths.get(fileName);
         for(final ResultData resultData : resultDataList) {
             try {
@@ -80,7 +82,7 @@ public final class FileIOUtils {
      *
      * @throws {@link IOException} if file/directory could not be deleted.
      */
-    public static void deleteIfExists(@NonNull final String fileName) throws IOException {
+    public void deleteIfExists(@NonNull final String fileName) throws IOException {
         final Path path = Paths.get(fileName);
         Files.deleteIfExists(path);
     }
@@ -92,7 +94,7 @@ public final class FileIOUtils {
      *
      * @throws {@link IOException} if file/directory could not be deleted.
      */
-    private static void removeFile(@NonNull final File file) throws IOException {
+    private void removeFile(@NonNull final File file) throws IOException {
         if (Files.deleteIfExists(file.toPath())) {
             log.info("file removed from location " + file.getPath());
         } else {
@@ -100,12 +102,12 @@ public final class FileIOUtils {
         }
     }
 
-    public static File generateFileLocation(final File repository, final URL url) throws IOException {
+    public File generateFileLocation(final File repository, final URL url) throws IOException {
         final File parentDirectory = createParentDirectoryInRepository(repository, url);
         return new File(parentDirectory, buildFileName(url));
     }
 
-    private static File createParentDirectoryInRepository(final File repository, final URL url) throws IOException {
+    private File createParentDirectoryInRepository(final File repository, final URL url) throws IOException {
         final File parentDirectory;
         try {
             parentDirectory = new File(repository, URLEncoder.encode(url.toString(), ENC));
@@ -115,7 +117,7 @@ public final class FileIOUtils {
         return parentDirectory;
     }
 
-    private static String buildFileName(final URL url) {
+    private String buildFileName(final URL url) {
         String fileName;
         try {
             fileName = new File(url.getPath()).getName();
@@ -132,13 +134,13 @@ public final class FileIOUtils {
      *
      * @return size that is freed up on disk after deletion of items.
      */
-    public static long deleteResourceOnDisk(@NonNull final File resourceToDelete) throws IOException {
+    public long deleteResourceOnDisk(@NonNull final File resourceToDelete) throws IOException {
         final long resourceFreeSize = resourceToDelete.length();
         int count = 0;
         while(true) {
             try {
-                FileIOUtils.removeFile(resourceToDelete);
-                FileIOUtils.removeFile(resourceToDelete.getParentFile());
+                removeFile(resourceToDelete);
+                removeFile(resourceToDelete.getParentFile());
                 return resourceFreeSize;
             } catch (final IOException ex) {
                 if (++count == MAX_RETRY_COUNT) throw ex;
@@ -146,6 +148,13 @@ public final class FileIOUtils {
         }
     }
 
-
+    public File createRepository(@NonNull final String repo) {
+        final File repository = new File(repo);
+        if (!repository.exists() && !repository.isDirectory() && !repository.canWrite()) {
+            throw new IllegalStateException("Image Cache repository needs to be an existing writable directory: "
+                    + repository.getAbsolutePath());
+        }
+        return repository;
+    }
 }
 

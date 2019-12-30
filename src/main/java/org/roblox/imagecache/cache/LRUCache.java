@@ -3,6 +3,7 @@ package org.roblox.imagecache.cache;
 import com.codahale.metrics.MetricRegistry;
 import com.google.common.io.ByteStreams;
 import com.google.common.net.HttpHeaders;
+import lombok.Getter;
 import lombok.NonNull;
 import org.apache.commons.io.FileUtils;
 import org.roblox.imagecache.types.ResourceData;
@@ -26,10 +27,10 @@ import java.util.*;
  * "https://en.wikipedia.org/wiki/Cache_replacement_policies#Least_recently_used_(LRU)">
  * <p>
  * This Cache is implemented d by using Java's {@code LinkedHashMap}.
- * It used input provided reporsitory as the path to save the files to.
+ * It uses input provided repository as the path to save the files to.
  * </p>
  */
-public class LRUCache {
+public class LRUCache implements Cache {
     private final Logger log = LoggerFactory.getLogger(LRUCache.class);
 
     private static final int TIMEOUT_MS = 1*60*1000;  // 1 minutes
@@ -38,42 +39,45 @@ public class LRUCache {
     private static final int MAX_RETRY_COUNT = 3;
 
     private final Map<String, ResourceData> linkedHashMap;
+    private final FileIOUtils fileIOUtils;
     private final File repository;
-    private final int maxCapacityInBytes;
+    private final long maxCapacityInBytes;
     private long currentSizeInBytes;
+    @Getter
+    private int cacheHitsCounter;
+    @Getter
+    private int cacheMissCounter;
+    @Getter
+    private int cacheEvictionCounter;
     private final MetricRegistry metricRegistry;
 
     /**
      * Creating LRU Cache using on disk storage as specified by the size in capacityInBytes and repository as the path
      * to store the resources.
-     *
-     * @param capacityInBytes valid positive integer for size in bytes that signifies the capacity of cache.
+     *  @param capacityInBytes valid positive integer for size in bytes that signifies the capacity of cache.
      *
      * @param numberOfItems valid positive integer which signifies the number of items in the cache with a load factor of 0.75.
-     *
      * @param repository the root location where the resources would be stored for caching on disk.
+     * @param fileIOUtils
      */
-    public LRUCache(final int capacityInBytes, final int numberOfItems, @NonNull final String repository) {
-        this.repository = new File(repository);
-        this.validate(this.repository, capacityInBytes, numberOfItems);
+    public LRUCache(final long capacityInBytes, final int numberOfItems, @NonNull final String repository,
+                    @NonNull final FileIOUtils fileIOUtils) {
+        this.fileIOUtils = fileIOUtils;
+        this.repository = fileIOUtils.createRepository(repository);
+        this.validate(capacityInBytes, numberOfItems);
         this.maxCapacityInBytes = capacityInBytes;
-        this.currentSizeInBytes = 0;
         this.linkedHashMap = Collections.synchronizedMap(new LinkedHashMap<>(numberOfItems, 0.75f, true));
+        //TODO: Add metrics
         this.metricRegistry = new MetricRegistry();
     }
 
     /**
      * validates the inputs.
      *
-     * @param repository repository/disk location that will be used to cache the images/resources.
      * @param capacityInBytes input size of cache.
-     *@param numberOfItems number of items in the cache size.
+     * @param numberOfItems number of items in the cache size.
      */
-    private void validate(final File repository, final int capacityInBytes, final int numberOfItems) {
-        if (!repository.exists() && !repository.isDirectory() && !repository.canWrite()) {
-            throw new IllegalStateException("Image Cache repository needs to be an existing writable directory: "
-                    + this.repository.getAbsolutePath());
-        }
+    private void validate(final long capacityInBytes, final int numberOfItems) {
         if(capacityInBytes < 0 || capacityInBytes > MAX_CACHE_CAPACITY) {
             throw new IllegalArgumentException(String.format("Value for cache capacity should be in %s and %s range", 0,
                     MAX_CACHE_CAPACITY));
@@ -96,13 +100,16 @@ public class LRUCache {
      *
      * @throws IOException
      */
+    @Override
     public ResultData load(@NonNull final String key) throws IOException {
         this.log.info("Trying to load object: " + key);
         if (this.linkedHashMap.containsKey(key)) {
             // cache hit
+            this.cacheHitsCounter++;
             final ResourceData cahedResource = this.linkedHashMap.get(key);
             return new ResultData(key, State.CACHE, cahedResource.getOriginalResourceBytes().length);
         } else {
+            this.cacheMissCounter++;
             //cache miss, download the image by making external service call
             final File downloadedResource = downLoadImage(new URL(key));
             final Path path = downloadedResource.toPath();
@@ -121,41 +128,50 @@ public class LRUCache {
      * @throws IllegalStateException when size of the object to be stored is greater than the cache size.
      */
     private File downLoadImage(final URL url) throws IOException {
-        HttpURLConnection con = null;
+        HttpURLConnection httpURLConnection = null;
         InputStream source = null;
         OutputStream destination = null;
         try {
-            con = getHttpURLConnection(url);
-            source = con.getInputStream();
-            final long sizeOfResourceToDownload = con.getContentLengthLong();
-            if(sizeOfResourceToDownload > this.maxCapacityInBytes){
-                throw new IllegalStateException("Size of object to be cached is larger than max capacity of cache size");
-            }
-            if(shouldEvict(sizeOfResourceToDownload)){
-                final List<ResourceData> entriesToDeleteFromCache = doEviction(sizeOfResourceToDownload);
-                for(final ResourceData resourceData : entriesToDeleteFromCache) {
-                    this.linkedHashMap.remove(resourceData.getResourceIdentifier());
-                }
-            }
-            final File origImg = FileIOUtils.generateFileLocation(this.repository, url);
+            httpURLConnection = getHttpURLConnection(url);
+            source = httpURLConnection.getInputStream();
+            final long sizeOfResourceToDownload = httpURLConnection.getContentLengthLong();
+            handleEviction(sizeOfResourceToDownload);
+            final File origImg = this.fileIOUtils.generateFileLocation(this.repository, url);
             // create parent folder that is unique for the original image
-            origImg.getParentFile().mkdir();
+            final boolean mkdir = origImg.getParentFile().mkdir();
             destination = new FileOutputStream(origImg);
             final long curFileSize = ByteStreams.copy(source, destination);
-            updateCurrentCapacity(curFileSize);
+            updateCurrentCacheCapacity(curFileSize);
             return origImg;
         } catch (final IOException e) {
             throw new IOException(String.format("Could not fetch image for url %s", url));
         } finally {
-            if(con!=null){
-                con.disconnect();
+            cleanup(httpURLConnection, source, destination);
+        }
+    }
+
+    private void handleEviction(final long sizeOfResourceToDownload) throws IOException {
+        if(sizeOfResourceToDownload > this.maxCapacityInBytes){
+            throw new IllegalStateException("Size of object to be cached is larger than max capacity of cache size");
+        }
+        if(shouldEvict(sizeOfResourceToDownload)){
+            final List<ResourceData> entriesToDeleteFromCache = doEviction(sizeOfResourceToDownload);
+            for(final ResourceData resourceData : entriesToDeleteFromCache) {
+                this.linkedHashMap.remove(resourceData.getResourceIdentifier());
             }
-            if(source!=null){
-                source.close();
-            }
-            if(destination!=null){
-                destination.close();
-            }
+            this.cacheEvictionCounter += entriesToDeleteFromCache.size();
+        }
+    }
+
+    private void cleanup(final HttpURLConnection con, final InputStream source, final OutputStream destination) throws IOException {
+        if(con!=null){
+            con.disconnect();
+        }
+        if(source!=null){
+            source.close();
+        }
+        if(destination!=null){
+            destination.close();
         }
     }
 
@@ -173,14 +189,15 @@ public class LRUCache {
      */
     private List<ResourceData> doEviction(final long requiredSize) {
         final List<ResourceData> resourceDataListToDelete = new ArrayList<>();
-        final Iterator itr = this.linkedHashMap.values().iterator();
+        final Iterator<ResourceData> itr = this.linkedHashMap.values().iterator();
         long objectsFreedSized = 0;
         while(itr.hasNext() && requiredSize > objectsFreedSized){
             try {
-                final ResourceData resourceData = (ResourceData) itr.next();
-                final File resourceToDelete = FileIOUtils.generateFileLocation(this.repository, new URL(resourceData.getResourceIdentifier()));
+                final ResourceData resourceData = itr.next();
+                final File resourceToDelete = this.fileIOUtils.generateFileLocation(this.repository,
+                        new URL(resourceData.getResourceIdentifier()));
                 objectsFreedSized += resourceToDelete.length();
-                final long resourceFreeSize = FileIOUtils.deleteResourceOnDisk(resourceToDelete);
+                final long resourceFreeSize = this.fileIOUtils.deleteResourceOnDisk(resourceToDelete);
                 this.currentSizeInBytes -= resourceFreeSize;
                 resourceDataListToDelete.add(resourceData);
             } catch (final IOException e) {
@@ -196,7 +213,7 @@ public class LRUCache {
      *
      * @param curFileSize size of the object that was just downloaded.
      */
-    private void updateCurrentCapacity(final long curFileSize) {
+    private void updateCurrentCacheCapacity(final long curFileSize) {
         this.currentSizeInBytes += curFileSize;
         this.log.info("After updating size of cache, currentSizeInBytes: " + this.currentSizeInBytes);
     }
