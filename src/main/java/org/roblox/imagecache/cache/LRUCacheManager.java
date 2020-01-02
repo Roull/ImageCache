@@ -19,7 +19,9 @@ import java.nio.file.Path;
 import java.util.*;
 
 /**
- * Class {@code LRUCache} represents a cache that uses Least Recently Used Item for eviction strategy.
+ * Class represents a cache that uses Least Recently Used Item for eviction strategy and is
+ * Read through cache i.e checks whether an item is present in the cache, if item is not present, makes a HTTP call
+ * downloads the resource and then updates the cache with the key and value as the item that was downloaded.
  * More information on the types of Cache Eviction can be found at:
  * <a href=
  * "https://en.wikipedia.org/wiki/Cache_replacement_policies#Least_recently_used_(LRU)">
@@ -85,9 +87,9 @@ public class LRUCacheManager implements Cache {
     }
 
     /**
-     * TODO: Read through Cache
-     * If the key is not present in the cache, we will make an HTTP call to web and download the images as well as populate
-     * the map with entry to the {@link ResourceData} object that consists of the actual bytes array as well as metadata.
+     * Implements a Read Through Cache i.e if the key is not present in the cache, we will make an HTTP call to web and
+     * download the item as well as populate the map with entry to the {@link ResourceData} object that consists of the
+     * actual bytes array as well as metadata.
      * If the resource is fetched by making external call we will return the {@link ResultData} with {@link State} as
      * State.DOWNLOADED, otherwise State.CACHED.
      *
@@ -171,11 +173,6 @@ public class LRUCacheManager implements Cache {
         return this.currentSizeInBytes + sizeOfResourceToDownload > this.maxCapacityInBytes;
     }
 
-    /**
-     * Updates the current cache size.
-     *
-     * @param curFileSize size of the object that was just downloaded.
-     */
     private void updateCurrentCacheCapacity(final long curFileSize) {
         this.currentSizeInBytes += curFileSize;
         this.log.info("After updating size of cache, currentSizeInBytes: " + this.currentSizeInBytes);

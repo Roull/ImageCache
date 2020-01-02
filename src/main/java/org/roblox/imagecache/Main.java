@@ -8,10 +8,10 @@ import org.roblox.imagecache.utils.FileIOUtils;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Properties;
 
 /**
  * Entry point with the main function to simulation cache loading.
@@ -26,15 +26,8 @@ public class Main {
     private static final DownloadManager downloadManager = new DownloadManager();
 
     public static void main(final String[] args) {
-        //loadPropertiesFromClassPath();
-
         final String defaultRepository = System.getProperty("user.dir");
-        //final String inputFilePath = defaultRepository + File.separator + DEFAULT_INPUT_FILE;
-        //TODO: use paths : Path currentPath = Paths.get(System.getProperty("user.dir"));
-        //Path filePath = Paths.get(currentPath.toString(), "data", "foo.txt");
-        //System.out.println(filePath.toString());
-
-        final String inputFilePath = "/Users/ramanoh/workspace/ImageCache" + File.separator + DEFAULT_INPUT_FILE;
+        final String inputFilePath = defaultRepository + File.separator + DEFAULT_INPUT_FILE;
 
         //1. Parse input file
         final List<String> inputImageUrls = fileIOUtils.readFileToList(inputFilePath);
@@ -46,30 +39,18 @@ public class Main {
         generateOutputData(defaultRepository, results);
     }
 
-    //TODO: Load image from properties instead
-    private static void loadPropertiesFromClassPath() {
-        try (final InputStream input = Main.class.getClassLoader().getResourceAsStream("config.properties")) {
-
-            final Properties prop = new Properties();
-
-            if (input == null) {
-                System.out.println("Sorry, unable to find config.properties in class path");
-            }
-
-            //load a properties file from class path, inside static method
-            prop.load(input);
-
-            //get the property value and print it out
-            System.out.println("Reading config.properties from input file : " + prop.getProperty("input.fileName"));
-            System.out.println("Writing output to file: " + prop.getProperty("output.fileName"));
-        } catch (final IOException ex) {
-            ex.printStackTrace();
-        }
-    }
-
+    /**
+     *
+     * @param inputImageUrls list of strings that are parsed from the inputFile, Based on the spec expects that
+     *                       index 0 consists of the size of the cache, index 1 consists of the number of URLS to be
+     *                       fetched for cache simulation and index 2 onwards the independent URLS to be cached.
+     *
+     * @param defaultRepository the location on disk where the resources that are to be cached can be stored.
+     *
+     * @return List of {@link org.roblox.imagecache.types.ResultData} that represents the result of caching for each
+     * of the URLS from the inputImagesUrls list.
+     */
     private static List<ResultData> processInput(final List<String> inputImageUrls, final String defaultRepository) {
-        //TODO: Documentation expected input format what is line 0, line 1, line 2?
-        //TODO: For every main call would cache be reinitializeD?
         final int maxSizeInBytes = Integer.parseInt(inputImageUrls.get(0));
         final LRUCacheManager cache = new LRUCacheManager(maxSizeInBytes, DEFAULT_NUM_ENTRIES_IN_CACHE, defaultRepository, fileIOUtils, downloadManager);
         final List<ResultData> results = new ArrayList<>();
