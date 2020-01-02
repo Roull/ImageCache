@@ -1,12 +1,10 @@
 package org.roblox.imagecache.cache;
 
-import com.codahale.metrics.MetricRegistry;
-import com.google.common.io.ByteStreams;
-import com.google.common.net.HttpHeaders;
 import lombok.Getter;
 import lombok.NonNull;
 import org.apache.commons.io.FileUtils;
 import org.roblox.imagecache.types.ResourceData;
+import org.roblox.imagecache.types.ResourceMetaData;
 import org.roblox.imagecache.types.ResultData;
 import org.roblox.imagecache.types.State;
 import org.roblox.imagecache.utils.FileIOUtils;
@@ -30,26 +28,23 @@ import java.util.*;
  * It uses input provided repository as the path to save the files to.
  * </p>
  */
-public class LRUCache implements Cache {
-    private final Logger log = LoggerFactory.getLogger(LRUCache.class);
+public class LRUCacheManager implements Cache {
+    private final Logger log = LoggerFactory.getLogger(LRUCacheManager.class);
 
-    private static final int TIMEOUT_MS = 1*60*1000;  // 1 minutes
-    private static final int CONNECT_TIMEOUT_MS = 30*1000;  // 30 seconds
-    private static final long MAX_CACHE_CAPACITY = FileUtils.ONE_GB; // 1GB
-    private static final int MAX_RETRY_COUNT = 3;
-
+    private static final long MAX_CACHE_CAPACITY = FileUtils.ONE_GB;
     private final Map<String, ResourceData> linkedHashMap;
     private final FileIOUtils fileIOUtils;
     private final File repository;
     private final long maxCapacityInBytes;
     private long currentSizeInBytes;
+
     @Getter
     private int cacheHitsCounter;
     @Getter
     private int cacheMissCounter;
     @Getter
     private int cacheEvictionCounter;
-    private final MetricRegistry metricRegistry;
+    private final DownloadManager downloadManager;
 
     /**
      * Creating LRU Cache using on disk storage as specified by the size in capacityInBytes and repository as the path
@@ -60,15 +55,17 @@ public class LRUCache implements Cache {
      * @param repository the root location where the resources would be stored for caching on disk.
      * @param fileIOUtils
      */
-    public LRUCache(final long capacityInBytes, final int numberOfItems, @NonNull final String repository,
-                    @NonNull final FileIOUtils fileIOUtils) {
+    public LRUCacheManager(final long capacityInBytes,
+                           final int numberOfItems,
+                           @NonNull final String repository,
+                           @NonNull final FileIOUtils fileIOUtils,
+                           @NonNull final DownloadManager downloadManager) {
         this.fileIOUtils = fileIOUtils;
         this.repository = fileIOUtils.createRepository(repository);
         this.validate(capacityInBytes, numberOfItems);
         this.maxCapacityInBytes = capacityInBytes;
         this.linkedHashMap = Collections.synchronizedMap(new LinkedHashMap<>(numberOfItems, 0.75f, true));
-        //TODO: Add metrics
-        this.metricRegistry = new MetricRegistry();
+        this.downloadManager = downloadManager;
     }
 
     /**
@@ -88,6 +85,7 @@ public class LRUCache implements Cache {
     }
 
     /**
+     * TODO: Read through Cache
      * If the key is not present in the cache, we will make an HTTP call to web and download the images as well as populate
      * the map with entry to the {@link ResourceData} object that consists of the actual bytes array as well as metadata.
      * If the resource is fetched by making external call we will return the {@link ResultData} with {@link State} as
@@ -111,43 +109,20 @@ public class LRUCache implements Cache {
         } else {
             this.cacheMissCounter++;
             //cache miss, download the image by making external service call
-            final File downloadedResource = downLoadImage(new URL(key));
+            final File downloadedResource = downLoadImage(key);
             final Path path = downloadedResource.toPath();
             this.linkedHashMap.put(key, new ResourceData(key, path.toString(), Files.readAllBytes(path)));
             return new ResultData(key, State.DOWNLOADED, downloadedResource.length());
         }
     }
 
-    /**
-     * Uses HTTPConnection and downloads the resource/images from web to repo/disk.
-     * Before downloading the resource from the web, we check the length of the resource to be downloaded and
-     * verify that we have sufficient diskspace as well as cache space to download the object from the disk.
-     *
-     * @return File reference to the object that was downloaded by making HTTP call
-     *
-     * @throws IllegalStateException when size of the object to be stored is greater than the cache size.
-     */
-    private File downLoadImage(final URL url) throws IOException {
-        HttpURLConnection httpURLConnection = null;
-        InputStream source = null;
-        OutputStream destination = null;
-        try {
-            httpURLConnection = getHttpURLConnection(url);
-            source = httpURLConnection.getInputStream();
-            final long sizeOfResourceToDownload = httpURLConnection.getContentLengthLong();
-            handleEviction(sizeOfResourceToDownload);
-            final File origImg = this.fileIOUtils.generateFileLocation(this.repository, url);
-            // create parent folder that is unique for the original image
-            final boolean mkdir = origImg.getParentFile().mkdir();
-            destination = new FileOutputStream(origImg);
-            final long curFileSize = ByteStreams.copy(source, destination);
-            updateCurrentCacheCapacity(curFileSize);
-            return origImg;
-        } catch (final IOException e) {
-            throw new IOException(String.format("Could not fetch image for url %s", url));
-        } finally {
-            cleanup(httpURLConnection, source, destination);
-        }
+    private File downLoadImage(final String url) throws IOException {
+        final HttpURLConnection httpURLConnection = this.downloadManager.getHttpURLConnection(url);
+        final long sizeOfResourceToDownload = this.downloadManager.getContentLength(httpURLConnection);
+        handleEviction(sizeOfResourceToDownload);
+        final ResourceMetaData metaData = this.downloadManager.loadResource(httpURLConnection, url, this.repository);
+        updateCurrentCacheCapacity(metaData.getResourceSizeInBytes());
+        return metaData.getDownloadedResource();
     }
 
     private void handleEviction(final long sizeOfResourceToDownload) throws IOException {
@@ -161,22 +136,6 @@ public class LRUCache implements Cache {
             }
             this.cacheEvictionCounter += entriesToDeleteFromCache.size();
         }
-    }
-
-    private void cleanup(final HttpURLConnection con, final InputStream source, final OutputStream destination) throws IOException {
-        if(con!=null){
-            con.disconnect();
-        }
-        if(source!=null){
-            source.close();
-        }
-        if(destination!=null){
-            destination.close();
-        }
-    }
-
-    private boolean shouldEvict(final long sizeOfResourceToDownload) {
-        return this.currentSizeInBytes + sizeOfResourceToDownload > this.maxCapacityInBytes;
     }
 
     /**
@@ -208,6 +167,10 @@ public class LRUCache implements Cache {
         return resourceDataListToDelete;
     }
 
+    private boolean shouldEvict(final long sizeOfResourceToDownload) {
+        return this.currentSizeInBytes + sizeOfResourceToDownload > this.maxCapacityInBytes;
+    }
+
     /**
      * Updates the current cache size.
      *
@@ -216,50 +179,5 @@ public class LRUCache implements Cache {
     private void updateCurrentCacheCapacity(final long curFileSize) {
         this.currentSizeInBytes += curFileSize;
         this.log.info("After updating size of cache, currentSizeInBytes: " + this.currentSizeInBytes);
-    }
-
-    /**
-     * Handles HTTP redirection and throws after maxRetryAttemtps as speicified.
-     *
-     * @param currentUrl url of the resource that needs to be fetched from the web.
-     *
-     * @return {@link HttpURLConnection} object from which we can copy the bytes to disk using streams.
-     *
-     * @throws IOException if file cannot be fetched from the server even after retries.
-     */
-    private HttpURLConnection getHttpURLConnection(@NonNull URL currentUrl) throws IOException {
-        int redirectCount = 0;
-        HttpURLConnection httpURLConnection;
-        final URL url = currentUrl;
-        int resp;// Handle redirects manually, so HTTP→HTTPS and vice versa work.
-        while (true) {
-            httpURLConnection = (HttpURLConnection) currentUrl.openConnection();
-            httpURLConnection.setConnectTimeout(CONNECT_TIMEOUT_MS);
-            httpURLConnection.setReadTimeout(TIMEOUT_MS);
-            resp = httpURLConnection.getResponseCode();
-
-            if (isaRedirect(resp)) {
-                redirectCount++;
-                if (redirectCount > MAX_RETRY_COUNT) {
-                    throw new IOException(String.format("Too many redirects when retrieving from URL %s", url));
-                } else {
-                    final String location = httpURLConnection.getHeaderField(HttpHeaders.LOCATION);
-                    currentUrl = new URL(currentUrl, location);
-                    continue;
-                }
-            }
-            break;
-        }
-        if (resp != HttpURLConnection.HTTP_OK) {
-            throw new IOException(String.format("HTTP %s when retrieving from URL %s (%d redirects, started at %s)",
-                    resp, currentUrl, redirectCount, url));
-        }
-        return httpURLConnection;
-    }
-
-    private boolean isaRedirect(final int resp) {
-        return resp == HttpURLConnection.HTTP_MOVED_PERM
-                || resp == HttpURLConnection.HTTP_MOVED_PERM
-                || resp == HttpURLConnection.HTTP_SEE_OTHER;
     }
 }

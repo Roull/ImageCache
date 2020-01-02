@@ -1,6 +1,7 @@
 package org.roblox.imagecache;
 
-import org.roblox.imagecache.cache.LRUCache;
+import org.roblox.imagecache.cache.DownloadManager;
+import org.roblox.imagecache.cache.LRUCacheManager;
 import org.roblox.imagecache.types.ResultData;
 import org.roblox.imagecache.types.State;
 import org.roblox.imagecache.utils.FileIOUtils;
@@ -22,12 +23,17 @@ public class Main {
     private static final String DEFAULT_INPUT_FILE = "image-cache-test-input.txt";
     private static final String DEFAULT_OUTPUT_FILE = "image-cache-test-output.txt";
     private static final FileIOUtils fileIOUtils = new FileIOUtils();
+    private static final DownloadManager downloadManager = new DownloadManager();
 
     public static void main(final String[] args) {
         //loadPropertiesFromClassPath();
 
         final String defaultRepository = System.getProperty("user.dir");
         //final String inputFilePath = defaultRepository + File.separator + DEFAULT_INPUT_FILE;
+        //TODO: use paths : Path currentPath = Paths.get(System.getProperty("user.dir"));
+        //Path filePath = Paths.get(currentPath.toString(), "data", "foo.txt");
+        //System.out.println(filePath.toString());
+
         final String inputFilePath = "/Users/ramanoh/workspace/ImageCache" + File.separator + DEFAULT_INPUT_FILE;
 
         //1. Parse input file
@@ -62,8 +68,10 @@ public class Main {
     }
 
     private static List<ResultData> processInput(final List<String> inputImageUrls, final String defaultRepository) {
+        //TODO: Documentation expected input format what is line 0, line 1, line 2?
+        //TODO: For every main call would cache be reinitializeD?
         final int maxSizeInBytes = Integer.parseInt(inputImageUrls.get(0));
-        final LRUCache cache = new LRUCache(maxSizeInBytes, DEFAULT_NUM_ENTRIES_IN_CACHE, defaultRepository, fileIOUtils);
+        final LRUCacheManager cache = new LRUCacheManager(maxSizeInBytes, DEFAULT_NUM_ENTRIES_IN_CACHE, defaultRepository, fileIOUtils, downloadManager);
         final List<ResultData> results = new ArrayList<>();
         for(int i = 2; i < inputImageUrls.size(); i++) {
             ResultData resultData;
