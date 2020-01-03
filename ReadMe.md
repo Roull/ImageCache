@@ -46,8 +46,9 @@ Generated output of image cache simulation to output file: /Users/ramanoh/worksp
 Path for downloaded resources would be: /Users/ramanoh/workspace/ImageCache
 ``
 
-* Option 2: Running using custom input file, custom outputfile path and custom path to downloaded resources
-. Using options -i for input, -o for output, -p for path to downloaded resources. 
+* Option 2: Running using custom input file, custom outputfile path and custom path to downloaded resources. 
+Using options -i for input, -o for output, -p for path to downloaded resources. 
+
 ``
 java -jar ./target/ImageCache-1.0-SNAPSHOT-jar-with-dependencies.jar -i /tmp/image-cache-test-input.txt  -o /tmp/image-cache-test-output_new.txt -p /tmp/
 ``
