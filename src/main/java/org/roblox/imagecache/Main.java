@@ -1,5 +1,6 @@
 package org.roblox.imagecache;
 
+import org.apache.commons.cli.*;
 import org.roblox.imagecache.cache.DownloadManager;
 import org.roblox.imagecache.cache.LRUCacheManager;
 import org.roblox.imagecache.types.ResultData;
@@ -8,7 +9,6 @@ import org.roblox.imagecache.utils.FileIOUtils;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
@@ -24,19 +24,69 @@ public class Main {
     private static final String DEFAULT_OUTPUT_FILE = "image-cache-test-output.txt";
     private static final FileIOUtils fileIOUtils = new FileIOUtils();
     private static final DownloadManager downloadManager = new DownloadManager();
+    private static final String DEFAULT_REPOSITORY = System.getProperty("user.dir");
 
     public static void main(final String[] args) {
-        final String defaultRepository = System.getProperty("user.dir");
-        final String inputFilePath = defaultRepository + File.separator + DEFAULT_INPUT_FILE;
+
+        final CommandLine cmd = setUpOptions(args);
+        if(!cmd.hasOption("input") && !cmd.hasOption("output") && !cmd.hasOption("path")) {
+            System.out.println("Running the image cache simulation in default Mode");
+        } else if (cmd.getOptions().length > 0 && cmd.getOptions().length < 3) {
+            System.out.println("Expected either paths to both input and output file or no arguments to run in default mode");
+            System.exit(1);
+        }
+        String inputFilePath = DEFAULT_REPOSITORY + File.separator + DEFAULT_INPUT_FILE;
+        String outputFilePath = DEFAULT_REPOSITORY + File.separator + DEFAULT_OUTPUT_FILE;
+        inputFilePath = cmd.getOptionValue("input", inputFilePath);
+        outputFilePath = cmd.getOptionValue("output", outputFilePath);
+        final String cacheRepository = cmd.getOptionValue("path", DEFAULT_REPOSITORY);
+        System.out.println("Running the image cache simulation using input from file " + Paths.get(inputFilePath).toAbsolutePath());
+        System.out.println("Generated output of image cache simulation to output file: " + Paths.get(outputFilePath).toAbsolutePath());
+        System.out.println("Path for downloaded resources would be: " + Paths.get(cacheRepository).toAbsolutePath());
 
         //1. Parse input file
         final List<String> inputImageUrls = fileIOUtils.readFileToList(inputFilePath);
 
         //2. Create Cache and simulate calls for load
-        final List<ResultData> results = processInput(inputImageUrls, defaultRepository);
+        final List<ResultData> results = processInput(inputImageUrls, cacheRepository);
 
         //3. Write results of caching to output file
-        generateOutputData(defaultRepository, results);
+        generateOutputData(outputFilePath, results);
+    }
+
+    private static CommandLine setUpOptions(final String[] args) {
+        final Options options = new Options();
+
+        final Option input = new Option("i", "input", true, "input file path");
+        input.setRequired(false);
+        options.addOption(input);
+
+        final Option output = new Option("o", "output", true, "output file");
+        output.setRequired(false);
+        options.addOption(output);
+
+        final Option path = new Option("p", "path", true, "path to downloaded resources");
+        output.setRequired(false);
+        options.addOption(path);
+
+        final Option defaultOption = new Option("d", "default", false,
+                "uses input file " + DEFAULT_INPUT_FILE + " from given problem statement and output " +
+                        "file(image-cache-test-output.txt) will be generated in the current directory");
+        defaultOption.setRequired(false);
+        options.addOption(defaultOption);
+
+        final CommandLineParser parser = new BasicParser();
+        final HelpFormatter formatter = new HelpFormatter();
+        CommandLine cmd = null;
+
+        try {
+            cmd = parser.parse(options, args);
+        } catch (final ParseException e) {
+            System.out.println(e.getMessage());
+            formatter.printHelp("Image Cache Utility", options);
+            System.exit(1);
+        }
+        return cmd;
     }
 
     /**
@@ -68,9 +118,8 @@ public class Main {
         return results;
     }
 
-    private static void generateOutputData(final String defaultRepository, final List<ResultData> results) {
+    private static void generateOutputData(final String outputFilePath, final List<ResultData> results) {
         try {
-            final String outputFilePath = defaultRepository + File.separator + DEFAULT_OUTPUT_FILE;
             fileIOUtils.deleteIfExists(outputFilePath);
             fileIOUtils.writeListToFile(outputFilePath, results);
         } catch (final IOException ex){
